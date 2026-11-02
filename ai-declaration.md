@@ -42,6 +42,7 @@ English explanations are the MVP output. Filipino and Cebuano support require th
 - Preserve relative deadlines as relative rules. Do not calculate a calendar date without the necessary trigger date and counting rules.
 - Distinguish “this grade meets the stated condition” from “you qualify for the scholarship.”
 - Show a clear failure or partial-result state when extraction or evidence checks fail.
+- A partially readable page remains partial even when its heading can be extracted. Preserve warnings in explanations, questions, and 3D/flat source views; do not present missing evidence as proof that a requirement, fee, or deadline is absent.
 
 RAG reduces reliance on unsupported model recall. It does not guarantee accuracy or eliminate prompt injection.
 

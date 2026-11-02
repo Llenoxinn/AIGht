@@ -1,6 +1,6 @@
 # AIGht API Contract
 
-Status: proposed REST contract v0.1, 2 November 2026. These endpoints are not implemented. Examples use synthetic IDs and data, not live credentials or documents.
+Status: proposed REST contract v0.2, revised after the pre-beta audit on 2 November 2026. These endpoints are not implemented. This draft adds explicit admission guarantees and partial-page coverage; there are no deployed clients to migrate. Examples use synthetic IDs and data, not live credentials or documents.
 
 ## Conventions
 
@@ -66,9 +66,11 @@ Publish deployed limits through capabilities and keep the client consistent. Gat
 
 Require `Idempotency-Key` for PDF/text import, analysis, and question creation. Accept 16–128 ASCII letters, digits, hyphens, or underscores. Scope a key to the session, HTTP method, and concrete path, and retain it only until session expiry.
 
-The first accepted request atomically claims the key and records a payload fingerprint. Same key and same payload returns the original `202` response and operation, even if that operation has completed or failed; it creates no extra work or quota charge. Same key with different payload returns `409 idempotency_conflict`. Missing/malformed keys return `422 validation_error`.
+An accepted request commits its payload fingerprint, original response, document/operation records, quota/budget reservation, and RQ queue admission together using the [atomic admission protocol](architecture.md#atomic-admission). `202` means that commit succeeded, not merely that a file was received. Same key and same payload returns the original `202` response and operation, even if that operation has completed or failed; it creates no extra logical operation, queue admission, or quota charge. Same key with different payload returns `409 idempotency_conflict`. Missing/malformed keys return `422 validation_error`.
 
-For JSON, fingerprint validated canonical fields including applied defaults. For multipart, fingerprint validated fields and file bytes, excluding boundary encoding. Concurrent identical requests must resolve to one operation; return `409 request_in_progress` with `Retry-After` if the original response is not available yet. If the referenced document was deleted, a replay returns `404`, never revives it. Rejected validation does not consume a document slot.
+For JSON, fingerprint validated canonical fields including applied defaults. For multipart, fingerprint validated fields and file bytes, excluding boundary encoding. Concurrent identical requests resolve to one operation; bounded transaction contention may return `409 request_in_progress` with `Retry-After`, but must not leave a permanent pre-acceptance claim. The accepted response is stored in the same commit as its operation. If the referenced document was deleted, a replay returns `404`, never revives it. Rejected validation does not consume a document slot.
+
+If the connection or API process fails before commit, no accepted operation or reservation remains and staged input is cleaned up. If it fails after commit but before delivering the response, replaying the same key recovers the accepted operation. For an uncertain Redis outcome, return `503 dependency_unavailable` until the fixed operation/job IDs are reconciled; clients retry with the same key rather than creating new work. This is one accepted logical operation, not an exactly-once guarantee for external provider calls during worker retries.
 
 ## Public capabilities and session endpoints
 
@@ -173,7 +175,10 @@ Return a document record:
   "coverage": {
     "status": "complete",
     "readable_pages": [1],
-    "unreadable_pages": []
+    "partial_pages": [],
+    "unreadable_pages": [],
+    "analyzed_pages": [],
+    "reasons": []
   },
   "warnings": [],
   "error": null,
@@ -182,7 +187,7 @@ Return a document record:
 }
 ```
 
-Document status is `queued | processing | ready | failed`. Before ingestion completes, `page_count` and `coverage` may be null. A failed document has a safe error object. A PDF with some unreadable pages may be ready with partial coverage; a source with no usable text fails ingestion.
+Document status is `queued | processing | ready | failed`. Before ingestion completes, `page_count` and `coverage` may be null. A failed document has a safe error object. A PDF with partial or unreadable pages may be ready if usable text remains, but its coverage is partial; a source with no usable text fails ingestion. Metadata coverage describes ingestion and uses `analyzed_pages: []`; downstream operation results report their own analysis/evidence scope.
 
 ### GET /documents/{document_id}/source
 
@@ -204,17 +209,49 @@ Page numbers are one-based PDF positions; printed labels, if present, are metada
   "paragraphs": [
     {"number": 1, "start": 0, "end": 25}
   ],
-  "layout_spans": []
+  "layout_spans": [],
+  "warnings": []
 }
 ```
 
 Canonical page text is NFC-normalized with LF line endings. Every `start` is inclusive and every `end` exclusive, counted in Unicode code points. JavaScript/.NET clients must translate to their native UTF-16 indexing when selecting text. Do not compare byte or UTF-16 indexes directly with these offsets.
 
-`layout_spans` contain `{start, end, boxes}` when extraction supports layout. A box is `[x, y, width, height]` normalized to 0–1 in the visible rotated page, with origin at the top-left. Missing geometry is an empty array, not an invented location. An unreadable page returns `status: "unreadable"`, empty text, and empty span/paragraph arrays; it cannot support a citation.
+`layout_spans` contain `{start, end, boxes}` when extraction supports layout. A box is `[x, y, width, height]` normalized to 0–1 in the visible rotated page, with origin at the top-left. Missing geometry is an empty array, not an invented location.
+
+Page `status` is `readable | partial | unreadable`:
+
+- `readable`: usable text with no detected extraction gap; it is not a guarantee of OCR fidelity or semantic correctness.
+- `partial`: usable text exists, but meaningful content is image-only, the text layer is suspect, or layout/reading order cannot be recovered reliably. Return the usable canonical text/spans plus at least one `Warning` naming the page and reason. A selectable heading above a scanned body must be partial.
+- `unreadable`: no usable text. Return empty text, empty paragraph/layout arrays, and a warning. It cannot support a citation.
+
+Do not infer complete coverage from a nonempty extracted string. Inspect text/image layout and extraction quality using evaluated parser rules; when meaningful body coverage is uncertain, return partial. Small decorative images alone do not imply incomplete text. Cite only valid usable spans, never image-only or untrusted/missing text. Source preview can still show the original page after safe document ingestion.
+
+Synthetic partial-page example:
+
+```json
+{
+  "document_id": "doc_partial_example",
+  "page_number": 1,
+  "printed_page_label": null,
+  "status": "partial",
+  "text": "Scholarship guidelines",
+  "paragraphs": [
+    {"number": 1, "start": 0, "end": 22}
+  ],
+  "layout_spans": [],
+  "warnings": [
+    {
+      "code": "partial_page",
+      "message": "The heading is readable, but the document body is image-only. Requirements may be missing.",
+      "page_numbers": [1]
+    }
+  ]
+}
+```
 
 ### DELETE /documents/{document_id}
 
-Return `202` with `{"document_id":"doc_example","status":"deleting"}` after revocation. Cancel related operations, invalidate caches, and schedule source/derived-data cleanup. Subsequent document/page/source/operation access returns `404`; repeated deletion also returns `404`. A worker must not republish deleted content. Application-controlled storage cleanup targets 15 minutes; provider copies follow the published notice.
+Return `202` with `{"document_id":"doc_example","status":"deleting"}` after atomic revocation of the document generation and cancellation of its work. Invalidate caches and schedule source/derived-data cleanup. Subsequent document/page/source/operation access returns `404`; repeated deletion also returns `404`. Finalization checks and writes are one guarded operation: delete-first rejects the result; complete-first is removed by deletion. No worker or RQ callback may recreate missing parent records. Application-controlled storage cleanup targets 15 minutes, including late candidate artifacts; provider copies follow the published notice.
 
 ## Analysis and question creation
 
@@ -230,7 +267,7 @@ Request:
 
 `language` defaults to `en`; other values return `422 unsupported_language`. Require a ready document and return `202` with `{document_id, operation_id, status, expires_at}`, Location, and Retry-After as for ingestion.
 
-Analyze all readable pages in bounded batches. If coverage or result limits prevent completion, return an explicitly partial analysis identifying the affected pages/reasons; never silently treat top-k retrieved chunks as the full document. A requested analysis is not started automatically by the import API; the client starts it after ingestion succeeds.
+Analyze all usable spans from readable/partial pages in bounded batches. Partial/unreadable pages or coverage/result limits force an explicitly partial analysis identifying the affected pages/reasons; never silently treat top-k retrieved chunks as the full document. Incomplete coverage leaves `not_stated` empty: explain which facts could not be established instead of claiming absent requirements, fees, or deadlines. A requested analysis is not started automatically by the import API; the client starts it after ingestion succeeds.
 
 ### POST /documents/{document_id}/questions
 
@@ -245,7 +282,7 @@ Request:
 
 Return the same `202` envelope and headers. The question is single-turn and scoped to the path's document. Do not accept `session_id`, arbitrary document lists, client-supplied evidence, provider prompts, or conversation history as additional request fields.
 
-No answer found is a successful operation with `status: "insufficient_evidence"` in its result, not a transport failure. A timeout or invalid provider output is an operation failure, not an invented answer.
+No answer found is a successful operation with `status: "insufficient_evidence"` in its result, not a transport failure. Preserve partial-page warnings even when a cited fact can be answered. If evidence is absent and content is unreadable/partial, say the answer may be in content AIGht could not read; do not claim the document excludes the fact. A timeout or invalid provider output is an operation failure, not an invented answer.
 
 ## Operations and result schemas
 
@@ -276,6 +313,7 @@ Operation state is `queued | running | succeeded | failed | cancelled`. Return `
     "coverage": {
       "status": "complete",
       "readable_pages": [1],
+      "partial_pages": [],
       "unreadable_pages": [],
       "analyzed_pages": [1],
       "reasons": []
@@ -315,16 +353,33 @@ Poll after two seconds initially and back off up to ten seconds with jitter, res
 | `Statement` | `{text, citation_ids}`; document claims require at least one valid citation; absence/uncertainty messages may have none |
 | `Citation` | `{id, document_id, page_number, start, end, quote, boxes}`; quote exactly equals the canonical page slice |
 | `Warning` | `{code, message, page_numbers}`; safe human-readable message, page list may be empty |
-| `Coverage` | `{status, readable_pages, unreadable_pages, analyzed_pages, reasons}`; status `complete | partial`; reason codes explain missing/budget-limited coverage |
+| `Coverage` | `{status, readable_pages, partial_pages, unreadable_pages, analyzed_pages, reasons}`; status `complete | partial`; all fields are required |
 | `Generation` | `{model_id, prompt_version, retrieval_version, extraction_version, schema_version}`; version identifiers, no credentials |
 
 Citation IDs are assigned/resolved by the server and unique within a result. All referenced IDs must exist in that result and belong to the active document. A multi-page claim uses separate page citations. Never create offsets on unreadable pages. Exact quotation validation and semantic support evaluation are separate obligations.
 
-For analysis, `analyzed_pages` identifies pages actually processed for extraction. For questions, it identifies evidence pages supplied to answer generation; `complete` means readable ingestion/retrieval completed within its budget, not that every page was sent to the model or the answer is infallible. Unreadable pages always make coverage partial. Include a reason for any budget-limited or unprocessed scope.
+Coverage page arrays are sorted, unique, one-based indexes within the document. `readable_pages` contains every page with usable text, including partial pages; `partial_pages` is a subset of it. `unreadable_pages` is disjoint from `readable_pages`, and their union accounts for all document pages after ingestion. `analyzed_pages` is a subset of `readable_pages`.
+
+For analysis, `analyzed_pages` identifies pages whose usable text was processed for extraction. For questions, it identifies evidence pages supplied to answer generation; complete question coverage does not mean every page was sent to the model or that the answer is infallible. Ingestion/metadata use an empty `analyzed_pages` array. No known extraction gap is represented as complete.
+
+Nonempty `partial_pages` or `unreadable_pages` always makes coverage partial. Reasons are drawn from `partial_pages | unreadable_pages | suspect_extraction | analysis_budget_exceeded | retrieval_budget_exceeded | result_limit_exceeded`; include every applicable reason and matching page warnings. Analysis is also partial when not all readable pages were processed. `status: "complete"` requires empty partial/unreadable arrays and reasons; it expresses no known gaps in that operation's defined scope, not verified fidelity of the source text layer.
+
+For the single-page scanned-body example, ingestion coverage is:
+
+```json
+{
+  "status": "partial",
+  "readable_pages": [1],
+  "partial_pages": [1],
+  "unreadable_pages": [],
+  "analyzed_pages": [],
+  "reasons": ["partial_pages"]
+}
+```
 
 ### Ingestion result
 
-`{type: "ingestion", document_id, coverage, warnings}`. Its coverage contains status/readable/unreadable pages; it does not include `analyzed_pages` or `reasons` until downstream analysis. A successful ingest means safe text is ready for processing, not that an explanation has been generated.
+`{type: "ingestion", document_id, coverage, warnings}`. Use the full `Coverage` shape with `analyzed_pages: []` and applicable extraction reasons. A successful ingest means some safe text is ready for processing, not that all source content was read or an explanation has been generated.
 
 ### Analysis result
 
@@ -340,13 +395,13 @@ For analysis, `analyzed_pages` identifies pages actually processed for extractio
 | `deadlines` | Array of deadline objects described below |
 | `actions` | Array of `{id, kind, text, citation_ids, related_fact_ids}`; kind `document_requirement | suggested_step` |
 | `details_to_check` | Array of `Statement` for conditions/ambiguity/conflicts encountered |
-| `not_stated` | Array drawn from `requirements | eligibility | fees | deadlines` when absent from readable analyzed content |
+| `not_stated` | Array drawn from `requirements | eligibility | fees | deadlines` when absent from completely analyzed content; empty for partial coverage |
 | `coverage` | `Coverage` |
 | `citations` | Array of `Citation` |
 | `warnings` | Array of `Warning` |
 | `generation` | `Generation` |
 
-Arrays may be empty. `not_stated` is not a claim about unreadable/unprocessed pages; display partial coverage beside any absence statement. Do not infer a currency solely from user location, or infer a zero fee from missing text. Preserve amount ranges or ambiguity in `text` and leave `amount` null when it is not a single explicit amount. Recommendations are distinguished from document obligations.
+Arrays may be empty. `not_stated` requires complete analysis coverage and must be empty for partial coverage, including partial single pages; use `details_to_check` and warnings to describe missing evidence instead. Reject inconsistent model output before publication. Do not infer a currency solely from user location, or infer a zero fee from missing text. Preserve amount ranges or ambiguity in `text` and leave `amount` null when it is not a single explicit amount. Recommendations are distinguished from document obligations.
 
 A deadline contains `{id, text, kind, date, trigger, counting_rule, citation_ids}`. `kind` is `absolute | relative | ambiguous`. `date` is nullable and set only for an unambiguous explicit date; `trigger` and `counting_rule` are nullable source-derived strings.
 
@@ -409,4 +464,4 @@ Rate/capacity responses include `Retry-After` when retry timing is known. For se
 
 Generate the eventual `/openapi.json` from FastAPI schemas and keep this contract aligned with it. Restrict interactive API documentation in public production as appropriate. A public OpenAPI document must contain no real tokens or private examples.
 
-Before beta, verify all endpoint schemas, synthetic examples, Unicode citation offsets, ownership, malformed input, idempotency concurrency, result readiness, coverage, session expiry, deletion races, bounded worker retries, and safe error serialization. A breaking deployed contract change requires a new API version or coordinated migration; additive fields must remain backward compatible.
+Before beta, verify all endpoint schemas, synthetic examples, Unicode citation offsets, ownership, malformed input, idempotency concurrency, result readiness, partial-page coverage, session expiry, atomic submission/finalization, deletion races, bounded worker retries, and safe error serialization. Crash before admission commit, lose the response after commit, race deletion with publication in both orders, and reject an old attempt token. Include a searchable-heading/image-body fixture and reject incomplete coverage with nonempty `not_stated`. These are required runtime checks, not tests already run. A breaking deployed contract change requires a new API version or coordinated migration; additive fields must remain backward compatible.

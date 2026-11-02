@@ -17,7 +17,7 @@ Read the documents relevant to your change:
 - [security.md](security.md): trust boundaries, data handling, and reporting.
 - [ai-declaration.md](ai-declaration.md): AI transparency and evaluation.
 
-The initial stack is standalone Blazor WebAssembly, Bootstrap, Python/FastAPI, Redis/RQ, and private temporary document storage. Vercel is the proposed static frontend host; API and worker hosting remain a deployment decision. PostgreSQL is deferred until persistent accounts/history are in scope.
+The initial stack is standalone Blazor WebAssembly, Bootstrap, a self-hosted Three.js module, Python/FastAPI, Redis/RQ, and private temporary document storage. Vercel is the proposed static frontend host; API and worker hosting remain a deployment decision. PostgreSQL is deferred until persistent accounts/history are in scope. The interactive 3D workspace is an MVP requirement with an equivalent flat navigator, not a substitute for readable source text.
 
 ## Work within scope
 
@@ -39,6 +39,7 @@ The initial stack is standalone Blazor WebAssembly, Bootstrap, Python/FastAPI, R
 - Leave relative deadlines relative unless all required counting inputs are known and the calculation is part of an authorized, tested feature.
 - Say when evidence is insufficient or conflicting. Do not fill document-specific gaps with general model knowledge.
 - A valid quotation does not automatically establish that a claim is supported; keep entailment evaluation separate.
+- Classify each source page as readable, partial, or unreadable. Some extracted text does not prove full coverage; a searchable heading above a scanned body must remain partial. Propagate warnings, cite only usable spans, and keep `not_stated` empty whenever analysis coverage is partial.
 
 ## Security invariants
 
@@ -50,6 +51,7 @@ The initial stack is standalone Blazor WebAssembly, Bootstrap, Python/FastAPI, R
 - Escape document/model text by default. Never insert untrusted HTML or let model output run code or network requests.
 - Keep source material and derived content out of application/analytics/error logs, queue payloads, fixtures, and public issues.
 - Deletion and expiry must revoke access immediately, prevent worker resurrection, and clean up all derived copies.
+- Follow the atomic admission/finalization protocol in [architecture.md](architecture.md): queue acceptance and its operation/idempotency/reservations commit together; publication checks and writes are one guarded operation. Missing/deleted/expired parents or stale attempts reject writes; callbacks cannot bypass these guards.
 - Use synthetic or explicitly permitted, appropriately redacted fixtures. Never commit real private documents or secrets.
 
 ## Implementation conventions
@@ -59,6 +61,7 @@ The initial stack is standalone Blazor WebAssembly, Bootstrap, Python/FastAPI, R
 - Use explicit request/response schemas and typed result statuses. Generate the implemented OpenAPI schema from the API models.
 - Keep long work in the worker. Bound retries and use the API's idempotency contract.
 - Use Bootstrap with semantic controls, visible focus, accessible source text, and honest progress/error states.
+- Blazor owns document/page/evidence state and semantic controls; the Three.js module owns only its dedicated canvas and render loop. Use discrete selection events, preserve flat/3D source alignment, and dispose of private textures/resources on deletion, expiry, or teardown.
 - Treat dependency/runtime versions as decisions to verify and pin, not facts to infer from this document.
 
 ## Verification and handoff
@@ -71,10 +74,10 @@ Choose checks that match the change:
 | --- | --- |
 | Documentation/templates | Relative links, fences, front matter, filenames, and consistency |
 | API contract | Schema/error cases, idempotency, readiness, ownership, and expiry |
-| Parsing/citations | Real layout fixtures, canonical offsets, Unicode, missing pages, and exact quotes |
+| Parsing/citations | Real layout fixtures, canonical offsets, Unicode, missing/partial pages, searchable heading over scanned body, and exact quotes |
 | Retrieval/prompts/models | Reviewed grounding, extraction coverage, abstention, and adversarial evaluations |
-| Security/lifecycle | Cross-session access, malformed input, cost limits, deletion/worker races, and cleanup |
-| Interface | Critical flow, keyboard/screen-reader behavior, mobile layout, zoom, and rendered inspection |
+| Security/lifecycle | Cross-session access, malformed input, cost limits, admission crash/replay, delete/complete ordering, stale attempts, and late-write cleanup |
+| Interface | Critical flow, synchronized 3D/Read/flat source selection, keyboard/screen-reader behavior, mobile layout, reduced motion, context loss, cleanup, and rendered inspection |
 
 Do not add implementation-mirroring tests for trivial changes. Never skip meaningful checks for security, parsing, deadlines, or other risky logic. Report what changed, what was actually verified, and any material remaining limitation.
 

@@ -89,7 +89,7 @@ The product should feel approachable, calm, and precise. Keep the “AIght” fe
 1. Read a short explanation of what AIGht does and how the document will be processed.
 2. Agree to the current processing notice and start a temporary session.
 3. Upload a text-based PDF or paste text.
-4. See extraction progress and any unreadable-page warning.
+4. See extraction progress and any partial/unreadable-page warning.
 5. Explore the page stack, then read the explanation and action checklist beside the selected source.
 6. Ask a question and open the passages supporting the answer.
 7. Delete the document or end the session.
@@ -133,7 +133,7 @@ Provide a PDF preview through a maintained viewer and an accessible extracted-te
 | What you need to do | What should I check or prepare? | Requirements and suggested steps, clearly distinguished |
 | Details to check | What needs attention? | Relative deadlines, exceptions, ambiguous terms, and conflicting passages |
 
-Requirements, eligibility, fees, and deadlines must remain individually inspectable. “Not stated” means information is absent from the readable text, not that a requirement or charge cannot exist elsewhere.
+Requirements, eligibility, fees, and deadlines must remain individually inspectable. “Not stated” is available only after complete analysis coverage, and refers to the analyzed document rather than rules that might exist elsewhere. With partial/unreadable/unprocessed content, explain what could not be established instead of asserting absence; `not_stated` stays empty in the API result.
 
 ### Checklist behavior
 
@@ -163,6 +163,8 @@ An answer contains its status, a short explanation, and source controls. Support
 
 For insufficient evidence: “I couldn't find this in the readable document. Check with the issuing office.” For conflicting evidence, show both rules before suggesting clarification. Do not replace a missing answer with general model knowledge.
 
+When coverage is incomplete, be more specific: “I couldn't establish the deadline. Part of page 2 could not be read, and the deadline may be there.” A page with a searchable heading over a scanned body is labeled “Page 2 · Partially readable” in Explore, Read, and the flat navigator. Its original thumbnail may still be visible; that does not mean the AI read the image-only text. Keep the warning alongside every affected answer and checklist, not only on the upload screen.
+
 ## States and recovery
 
 | State | Interface behavior |
@@ -173,7 +175,7 @@ For insufficient evidence: “I couldn't find this in the readable document. Che
 | Extracting / indexing | Show the named stage and allow document deletion to stop work |
 | Analyzing | Keep the source usable; announce progress without repeated interruptions |
 | Ready | Show results, citation controls, and question entry |
-| Partially readable | List missing pages and label results partial in every affected view |
+| Partially readable | List partial and unreadable pages, identify known gaps, and label results partial in every affected view; a readable heading never hides an image-only body warning |
 | No usable text | Explain that OCR is unavailable and suggest pasting readable text |
 | Unsupported/encrypted/oversized input | State the exact restriction and preserve pasted input for correction |
 | AI provider unavailable | Keep the source accessible; offer an explicit retry without duplicate work |
@@ -303,7 +305,7 @@ Filipino and Cebuano output are later features. Their design must preserve untra
 
 - Demonstrate actual 3D object picking, bounded rotation, spread/stack pages, Read transition, source-linked selection, and reset. Verify the scene works beyond a static screenshot or hover tilt.
 - Complete upload → explanation → cited question → checklist → deletion with mouse, touch, keyboard, and the flat navigator. No task requires dragging or completion of an animation.
-- Review the full journey with a long filename, long requirement, multi-page quote, missing fee, conflicting deadlines, unreadable pages, extraction failure, slow connection, and session expiry.
+- Review the full journey with a long filename, long requirement, multi-page quote, missing fee, conflicting deadlines, unreadable pages, a searchable heading above an image-only body, suspect text/layout, extraction failure, slow connection, and session expiry. Partial source content must never appear as complete coverage or a definitive absence claim.
 - Test 1440px, 768px, 390px, and 320px layouts, text enlargement, 400% zoom, portrait/landscape, reduced motion, and forced colors. Document layout changes needed at each size.
 - Verify exact source selection is identical in Explore, Read, and the fallback navigator. Check that readable content and primary actions are never occluded by a page or overlay.
 - Disable WebGL, simulate context loss and sustained low frame rate, hide/reopen the tab, and switch documents repeatedly. Preserve functional state and confirm render loops/resources are released.

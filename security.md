@@ -28,7 +28,8 @@ Trust boundaries include browser-to-API, upload-to-parser, API-to-Redis/storage,
 | Stored/reflected script content | Default text escaping, restricted Markdown, safe viewer and CSP | HTML/script payloads in filename, text, and model output |
 | Stolen or logged bearer token | HTTPS, in-memory token, no token URLs/logging, short fixed lifetime | Log inspection, browser storage inspection, expiry tests |
 | AI cost or queue exhaustion | Session/IP/global quotas, concurrency, token and spend ceilings | Budget and repeated-session abuse tests |
-| Deleted data returns through a worker/cache | Revoke first, check generation/expiry before publish, independent cleanup | Concurrent delete/complete and restart tests |
+| Deleted data returns through a worker/cache | Atomic revocation and guarded generation/attempt publication; independent cleanup | Delete-first, complete-first, stale-attempt, and restart tests |
+| A crash separates accepted work from queue admission | Commit operation, idempotency response, reservations, and RQ admission together | Crash before commit, lose the response after commit, replay the key |
 | Secrets/dependencies compromised | Least privilege, pinned dependencies, secret scanning, patch process | CI checks and deployment review |
 
 ## Session authorization and browser controls
@@ -82,7 +83,11 @@ RAG does not eliminate prompt injection; [OWASP describes the remaining risk](ht
 
 Authorization blocks access immediately on deletion/expiry. The cleanup target for application-controlled live copies is 15 minutes; monitor failures and sweep independently of Redis. Object lifecycle rules are a backstop, not the only deletion mechanism. Use deterministic storage prefixes and creation/expiry metadata to find orphans after a crash.
 
-Late workers must recheck ownership, generation, cancellation, and absolute expiry before committing output; deleted resources must not be recreated. Disable content-bearing backups and object versioning for ephemeral storage where possible. If a provider/host necessarily retains copies, publish the actual retention boundary and review suitability before accepting real documents. Do not promise immediate physical removal from infrastructure outside application control.
+Late workers must check ownership, generation, cancellation, current attempt, and absolute expiry inside the same atomic operation that publishes output. A check followed by an independent write is insufficient. Apply the [admission and finalization protocols](architecture.md#atomic-admission): accepted work and its queue admission commit together; deletion revokes the generation/session atomically. If deletion wins, no result/index/callback may recreate missing parents; if completion wins, deletion removes its published content. Retry/failure callbacks use the same guards and release reserved capacity at most once.
+
+Private candidate artifacts outside Redis carry session/document/attempt/expiry metadata, remain inaccessible until a guarded reference is published, and are swept after rejected publication, crashes, or late writes. RQ stores content-free completion values; application-controlled results follow the guarded lifecycle. Test recovery for uncertain transaction outcomes rather than treating an orphaned operation or idempotency key as accepted work. Provider calls may execute again after a crash, so retry/spend policies must cover that possibility.
+
+Disable content-bearing backups and object versioning for ephemeral storage where possible. If a provider/host necessarily retains copies, publish the actual retention boundary and review suitability before accepting real documents. Do not promise immediate physical removal from infrastructure outside application control.
 
 Closing a tab is not reliable server-side deletion. Offer explicit “Delete document” and “End session” controls and explain the remaining fixed expiry. Do not use uploads, questions, answers, or embeddings for model training or unrelated analytics by default.
 
@@ -98,7 +103,7 @@ Closing a tab is not reliable server-side deletion. Offer explicit “Delete doc
 
 ## Before beta
 
-Release requires evidence of ownership isolation, malformed-file handling, prompt-injection resistance, citation validation, XSS protection, rate/cost limits, fixed expiry, deletion races, queue cleanup, log redaction, and dependency review.
+Release requires evidence of ownership isolation, malformed-file handling, prompt-injection resistance, citation validation, XSS protection, rate/cost limits, fixed expiry, atomic admission/finalization, crash/replay and deletion ordering, stale-attempt rejection, late-artifact cleanup, log redaction, and dependency review. Verify that partial source pages never produce complete coverage or unsupported absence claims. Exercise document revocation while the 3D viewer is animating or loading textures; late callbacks must discard the private content. These are release requirements, not implemented or audited protections yet.
 
 Select actual processors and hosting regions, publish a plain-language processing notice, and review privacy obligations for the intended users and jurisdictions. If minors or sensitive document categories are in scope, resolve the appropriate handling before inviting uploads. Agreement to a notice alone is not a claim that every legal obligation is satisfied.
 

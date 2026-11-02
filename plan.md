@@ -1,6 +1,6 @@
 # AIGht Product and Delivery Plan
 
-Status: proposed MVP baseline, 2 November 2026. No application implementation exists yet. Estimates and release dates must be set after the first technical spike.
+Status: proposed MVP baseline, revised after the pre-beta architecture audit on 2 November 2026. No application implementation exists yet. The fixes below define required implementation and checks; they do not establish beta readiness. Estimates and release dates must be set after the first technical spike.
 
 ## Product direction
 
@@ -23,6 +23,7 @@ Success means a user can identify the relevant rule, understand its conditions, 
 | AIght, What Now? | Cited requirements, eligibility rules, fees, deadlines, and an action checklist |
 | AIght, Ask! | Single-turn questions grounded in the active document, with selectable source citations |
 | Source access | PDF preview and accessible extracted text; citations open the relevant page and passage |
+| Interactive 3D | A real-time Three.js page stack within Blazor, synchronized with source/citation selection and an equivalent flat navigator |
 | Privacy controls | Temporary anonymous session, visible expiry, delete-document and end-session actions |
 | Feedback | An issue template for redacted AI accuracy reports; a private vulnerability reporting route |
 
@@ -54,7 +55,7 @@ These are project defaults to implement and evaluate, not measured service capac
 | Question | 2,000 Unicode code points |
 | Simultaneous work | 2 queued or running operations per session |
 
-Reject encrypted PDFs and documents with no usable text. If only some pages are readable, show the missing pages and return a partial analysis; never imply the entire document was covered. Reject pathological extraction output rather than silently truncating it.
+Reject encrypted PDFs and documents with no usable text. Classify pages as readable, partial, or unreadable. A searchable heading above a scanned body remains partial even though some text was extracted. Carry partial/missing-page warnings into analyses, answers, and the 3D/flat viewers; never imply the entire document was covered or assert that an unseen requirement is absent. Reject pathological extraction output rather than silently truncating it.
 
 ## Delivery sequence
 
@@ -63,29 +64,33 @@ Reject encrypted PDFs and documents with no usable text. If only some pages are 
 - Select supported .NET and Python versions; record and pin exact versions during scaffolding.
 - Select the LLM/embedding provider, PDF extraction library, and backend/storage host.
 - Verify provider data handling, regions, pricing, request limits, and deletion constraints.
-- Create synthetic fixtures covering the scholarship example, conflicting rules, missing dates, and unreadable pages.
+- Create synthetic fixtures covering the scholarship example, conflicting rules, missing dates, unreadable pages, searchable headings above image-only bodies, and unreliable table/column extraction.
 - Prototype PDF text extraction, page references, bounding boxes, and accessible text navigation.
+- Prove one thin local path with a synthetic PDF: upload → bounded AI explanation/question → validated source citation → the same selected page in a minimal interactive 3D stack. This is a feasibility spike, not the full feature implementation or permission to process real private documents.
+- Verify Blazor/Three.js module loading and discrete page-selection interop, a flat fallback, and renderer disposal. Record the chosen viewer/renderer build approach and representative desktop/phone test devices.
+- Verify that the selected Redis/RQ versions support caller-owned transactional enqueueing, watched-key expiry, and guarded publication. Bound provider spend from the first spike call.
 
-Exit: a permitted sample can be extracted with reproducible passage locations; deployment and provider decisions are recorded, including unresolved risks.
+Exit: one synthetic document completes that source-backed path, including actual 3D page selection and flat access. Partial-page fixtures are classified honestly, the queue/transaction approach is demonstrated, and deployment/provider decisions and unresolved risks are recorded.
 
 ### 1. Build secure input and temporary sessions
 
 - Scaffold Blazor WebAssembly with Bootstrap and a FastAPI service plus worker.
-- Add anonymous bearer sessions, ownership checks, request limits, private source storage, and Redis-backed jobs.
+- Add anonymous bearer sessions, ownership checks, request limits, private source storage, and Redis-backed jobs using the atomic admission/finalization protocol in [architecture.md](architecture.md).
 - Add upload/paste validation, scan-before-parse handling, ingestion status, and source viewing.
 - Implement absolute expiry, cancellation, deletion, and cleanup monitoring before accepting real user documents.
+- Add injected-failure checks before/after queue commit, duplicate concurrent submissions, deleted/expired parent records, stale worker attempts, and storage writes arriving after cleanup. Enforce budgets before dispatching any AI work.
 
-Exit: two sessions cannot access each other's documents or jobs; expired/deleted data cannot be read or republished by workers.
+Exit: two sessions cannot access each other's documents/jobs. One accepted request produces one logical operation and queue admission; replay after a lost HTTP response recovers it. Deletion and worker finalization are safe in either order, and interrupted admission/retries resolve without stuck keys, duplicate capacity charges, or orphaned private data.
 
 ### 2. Explain and extract actions
 
 - Preserve page provenance while chunking and indexing.
 - Extract facts across all readable pages, then synthesize the explanation.
-- Return typed, schema-validated sections with evidence and coverage information.
+- Return typed, schema-validated sections with evidence and readable/partial/unreadable coverage information. Partial results leave `not_stated` empty and explain uncertainty about missing facts.
 - Preserve “must,” “may,” exceptions, amounts, and relative-deadline wording.
 - Build the explanation view, action checklist, and source citation navigation.
 
-Exit: the evaluation fixtures produce complete or explicitly partial results; unsupported claims and fabricated citations are blocked.
+Exit: the evaluation fixtures produce complete or explicitly partial results; the searchable-heading/scanned-body case never reports complete coverage or a definitive missing deadline. Unsupported claims and fabricated citations are blocked.
 
 ### 3. Add document-grounded questions
 
@@ -96,10 +101,21 @@ Exit: the evaluation fixtures produce complete or explicitly partial results; un
 
 Exit: answerable, unanswerable, ambiguous, adversarial, and cross-session cases pass the agreed evaluation set.
 
-### 4. Validate and release a controlled beta
+### 4. Deliver the interactive 3D workspace
+
+- Build the bounded page stack, page picking, spread/stack and reset controls, Explore/Read transition, and existing evidence/action views described in [design.md](design.md).
+- Share one selected page/evidence state between Blazor controls, the DOM/PDF viewer, and Three.js. Keep question input, reading text, and checkboxes usable without waiting for animation.
+- Generate private thumbnails in memory, virtualize neighboring pages, and preserve partial-page labels in both 3D and flat views.
+- Add keyboard and tap alternatives for dragging, reduced motion, mobile activation, WebGL/context-loss fallback, and adaptive scene quality.
+- Exercise deletion/expiry during animation and texture loading, renderer disposal, hidden-tab suspension, and repeated view changes on the recorded representative devices.
+
+Exit: real page picking and citation selection resolve to the same source span in Explore, Read, and the flat navigator. Desktop/mobile interaction meets the measured budgets agreed from the spike; all tasks work with keyboard/tap alternatives and reduced motion, and deleted content cannot reappear through a late scene callback.
+
+### 5. Validate and release a controlled beta
 
 - Exercise keyboard, screen-reader, small-screen, zoom, and low-bandwidth flows.
 - Test malicious PDFs, prompt injection, cost exhaustion, cancellation races, and provider outages.
+- Run the crash/replay/deletion ordering matrix and partial-page extraction fixtures against the deployed stack; verify scene fallback and resource cleanup on actual devices.
 - Run retention/deletion drills, restore/configuration checks, and secret scanning.
 - Publish the actual processing notice, provider details, and private security contact.
 - Measure quality, latency, and cost on a documented workload before publishing claims.
@@ -117,6 +133,12 @@ Exit: all release gates below have recorded evidence and a maintainer signs off 
 | Question asks about an unrelated scholarship | Say the active document does not provide enough information |
 | A PDF page contains “ignore all instructions” | Treat it as document content; do not execute it or expose other data |
 | Page 4 has no extractable text | Identify page 4 as unreadable and label analysis coverage partial |
+| A selectable heading sits above an image-only deadline | Mark that page partial; do not report the deadline as absent or coverage as complete |
+| The API process stops before admission commits | No accepted operation, queue entry, quota charge, or permanent idempotency claim; unused staged input is cleaned up |
+| The API process stops after commit but before returning `202` | Replaying the key returns the original operation without another admission |
+| Deletion races with worker completion | Delete-first rejects publication; complete-first is removed by deletion; old attempts cannot recreate data |
+| A citation is selected in the 3D workspace | Explore, Read, and the flat navigator identify the same document/page/span |
+| WebGL fails or a document expires during texture loading | Flat access remains usable when authorized; expired content and late textures are discarded |
 
 ## Quality and release gates
 
@@ -129,6 +151,9 @@ Use at least 30 synthetic or permitted documents and 100 reviewed questions, inc
 - Zero fabricated dates/amounts and zero cross-session disclosure in the release test set. Any occurrence blocks release.
 - Full keyboard operation, readable source text, and WCAG 2.2 AA checks for the critical journey.
 - Deletion/expiry tests cover API data, storage, queue registries, caches, and late worker writes.
+- Injected admission/finalization failures prove replay safety, bounded recovery, current-attempt enforcement, and exactly-once capacity release; external provider execution/billing is not assumed exactly once.
+- No known partial/unreadable page is labeled complete, and incomplete coverage never generates a definitive `not_stated` claim. Include the mixed-content single-page fixture in the release set.
+- Interactive 3D is delivered, including source-state synchronization, keyboard/tap alternatives, reduced motion, context-loss/low-performance fallback, and resource cleanup. A concept image or hover tilt does not satisfy this gate.
 - Record p50/p95 latency, failure rate, and cost per document/question with workload and environment. Set operating targets after measurement.
 
 ## Risks and decisions
@@ -141,6 +166,9 @@ Use at least 30 synthetic or permitted documents and 100 reviewed questions, inc
 | Unexpected AI cost | Hard input/output budgets, concurrency limits, and a deployment-wide spend ceiling |
 | Anonymous sessions do not provide durable identity | No recovery/history claim; abuse controls and a possible later account model |
 | Hosting or provider constraints change | Recheck primary documentation when implementing and deploying |
+| Work is accepted or published inconsistently after a crash/delete | Transactional admission, guarded finalization, fixed logical operation IDs, and injected-failure checks |
+| A page has both readable and unreadable content | Per-page partial status, conservative extraction checks, persistent coverage warnings, and no absence claims |
+| 3D integration or phone performance blocks delivery | Phase 0 proof, an explicit Phase 4 milestone, on-device budgets, and equivalent flat controls |
 
 The repository maintainer owns these decisions until roles are assigned. Track implementation work with the [GitHub issue templates](.github/ISSUE_TEMPLATE); templates become available after the files reach a GitHub repository's default branch, following [GitHub's template configuration guidance](https://docs.github.com/en/communities/using-templates-to-encourage-useful-issues-and-pull-requests/configuring-issue-templates-for-your-repository).
 
