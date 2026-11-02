@@ -14,6 +14,12 @@ async function copy(source, destination) {
   await copyFile(source, destination);
 }
 
+async function copyText(source, destination) {
+  await mkdir(dirname(destination), { recursive: true });
+  // npm package text can use CRLF; generated text must match Linux Git checkouts.
+  await writeFile(destination, (await readFile(source, 'utf8')).replace(/\r\n?/g, '\n'));
+}
+
 async function copyTree(source, destination) {
   await mkdir(destination, { recursive: true });
   await cp(source, destination, { recursive: true });
@@ -25,20 +31,20 @@ for (const name of ['three', 'pdfjs-dist', 'bootstrap', '@fontsource/geist-sans'
 }
 
 for (const file of ['three.module.js', 'three.core.js']) {
-  await copy(join(modules, 'three', 'build', file), join(vendor, 'three', file));
+  await copyText(join(modules, 'three', 'build', file), join(vendor, 'three', file));
 }
-await copy(join(modules, 'three', 'LICENSE'), join(vendor, 'three', 'LICENSE'));
+await copyText(join(modules, 'three', 'LICENSE'), join(vendor, 'three', 'LICENSE'));
 
 for (const file of ['pdf.mjs', 'pdf.worker.mjs']) {
-  await copy(join(modules, 'pdfjs-dist', 'build', file), join(vendor, 'pdfjs', file));
+  await copyText(join(modules, 'pdfjs-dist', 'build', file), join(vendor, 'pdfjs', file));
 }
 for (const directory of ['cmaps', 'standard_fonts', 'wasm', 'iccs']) {
   await copyTree(join(modules, 'pdfjs-dist', directory), join(vendor, 'pdfjs', directory));
 }
-await copy(join(modules, 'pdfjs-dist', 'LICENSE'), join(vendor, 'pdfjs', 'LICENSE'));
+await copyText(join(modules, 'pdfjs-dist', 'LICENSE'), join(vendor, 'pdfjs', 'LICENSE'));
 
-await copy(join(modules, 'bootstrap', 'dist', 'css', 'bootstrap.min.css'), join(vendor, 'bootstrap', 'bootstrap.min.css'));
-await copy(join(modules, 'bootstrap', 'LICENSE'), join(vendor, 'bootstrap', 'LICENSE'));
+await copyText(join(modules, 'bootstrap', 'dist', 'css', 'bootstrap.min.css'), join(vendor, 'bootstrap', 'bootstrap.min.css'));
+await copyText(join(modules, 'bootstrap', 'LICENSE'), join(vendor, 'bootstrap', 'LICENSE'));
 
 const fontFaces = [];
 for (const weight of [400, 500, 600]) {
@@ -50,8 +56,8 @@ const serifFile = 'instrument-serif-latin-400-normal.woff2';
 await copy(join(modules, '@fontsource', 'instrument-serif', 'files', serifFile), join(fonts, serifFile));
 fontFaces.push(`@font-face { font-family: 'Instrument Serif'; font-style: normal; font-weight: 400; font-display: swap; src: url('./${serifFile}') format('woff2'); }`);
 await writeFile(join(fonts, 'fonts.css'), `${fontFaces.join('\n')}\n`);
-await copy(join(modules, '@fontsource', 'geist-sans', 'LICENSE'), join(fonts, 'GEIST-LICENSE.txt'));
-await copy(join(modules, '@fontsource', 'instrument-serif', 'LICENSE'), join(fonts, 'INSTRUMENT-SERIF-LICENSE.txt'));
+await copyText(join(modules, '@fontsource', 'geist-sans', 'LICENSE'), join(fonts, 'GEIST-LICENSE.txt'));
+await copyText(join(modules, '@fontsource', 'instrument-serif', 'LICENSE'), join(fonts, 'INSTRUMENT-SERIF-LICENSE.txt'));
 
 const iconNames = [
   'arrow-left', 'arrow-right', 'arrow-counter-clockwise', 'arrows-out-simple',
@@ -72,7 +78,7 @@ for (const name of iconNames) {
 }
 await mkdir(join(vendor, 'icons'), { recursive: true });
 await writeFile(join(vendor, 'icons', 'phosphor.svg'), `<svg xmlns="http://www.w3.org/2000/svg">\n${symbols.join('\n')}\n</svg>\n`);
-await copy(join(modules, '@phosphor-icons', 'core', 'LICENSE'), join(vendor, 'icons', 'LICENSE'));
+await copyText(join(modules, '@phosphor-icons', 'core', 'LICENSE'), join(vendor, 'icons', 'LICENSE'));
 
 const manifest = {
   generated_by: 'npm run assets',
