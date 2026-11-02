@@ -1,0 +1,14 @@
+* text=auto eol=lf
+
+# Preserve binary assets, including PDFs with byte-based cross-reference offsets.
+*.pdf binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.pfb binary
+*.bcmap binary
+*.wasm binary
+*.icc binary

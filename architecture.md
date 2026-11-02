@@ -1,6 +1,6 @@
 # AIGht System Architecture
 
-Status: proposed MVP architecture, 2 November 2026. Components and directory names below are planned, not an inventory of implemented services.
+Status: initial v1.0.0 local architecture, 3 November 2026. The browser, API, worker, and cleanup modules are implemented; hosted deployment and beta verification remain pending. [Complete component, input/output, sequence, and deletion diagrams](docs/diagrams/system-flow.md) map the implementation; [README.md](README.md) provides run commands.
 
 ## Architecture decisions
 
@@ -10,11 +10,13 @@ Status: proposed MVP architecture, 2 November 2026. Components and directory nam
 | API | Python / FastAPI | Typed request validation and document/AI integration |
 | Background work | One Python worker using RQ with Redis and JSON serialization | Keeps parsing and model calls outside request handlers |
 | Temporary state | Redis | Session ownership, operation state, extracted text, bounded retrieval indexes, and scoped caches |
-| Original documents | Private temporary object storage; isolated filesystem storage in local development | Keeps large files out of Redis and the public frontend |
+| Original documents | Private temporary filesystem / Compose volume; hosted storage remains a deployment decision | Keeps original files out of Redis and the public frontend |
 | Retrieval | Page-aware chunks, lexical matching plus embeddings, ranked within one document | Grounds answers while preserving evidence locations |
-| AI provider | One selected LLM/embedding provider behind a small integration module | Avoids unnecessary provider abstractions; provider selection is still open |
+| AI provider | OpenAI structured chat output and embeddings through a small server-side module; model configured by operator | Avoids unnecessary provider abstractions; live model compatibility must be verified |
 | Persistent database | Deferred; PostgreSQL if accounts/history become necessary | The MVP has no durable user library |
 | Hosting | Vercel for static frontend; container-capable host for FastAPI, worker, Redis, and private storage | Separates static delivery from processing lifecycles |
+
+The current runtime uses .NET SDK 10.0.403 / Blazor 10.0.14 and Python 3.13. Backend packages are pinned in `pyproject.toml` and `uv.lock`; frontend assets and their licenses are self-hosted and recorded in `src/AIGht.Web/wwwroot/vendor/manifest.json`. The local Compose frontend uses nginx; no Vercel deployment is configured. PDF parsing fails closed without Linux Landlock ABI 3+ and libseccomp. See [the Linux kernel's Landlock documentation](https://docs.kernel.org/userspace-api/landlock.html) for the underlying access-control model.
 
 [Microsoft documents standalone Blazor WebAssembly deployment to static hosting](https://learn.microsoft.com/en-us/aspnet/core/blazor/host-and-deploy/webassembly/). The proposed Vercel build must publish those assets with the correct output directory and route fallback; this is a project deployment choice based on [Vercel's build configuration](https://vercel.com/docs/builds/configure-a-build), not a claim that a native Blazor integration is configured.
 
@@ -45,7 +47,7 @@ Blazor owns the session, selected page/evidence, accessible HTML controls, and R
 
 PDF parsing runs in a restricted subprocess/container with no network access and bounded CPU, memory, time, pages, and extracted text. The worker's provider integration has allowlisted outbound access; the parser does not inherit it. Model output cannot invoke tools, fetch URLs, run code, or submit applications.
 
-## Proposed repository layout
+## Implemented repository layout
 
 ```text
 /
@@ -56,21 +58,26 @@ PDF parsing runs in a restricted subprocess/container with no network access and
   architecture.md
   security.md
   api.md
+  README.md
+  compose.yaml
+  global.json
+  pyproject.toml
+  uv.lock
   .github/
     SECURITY.md
     ISSUE_TEMPLATE/
+    workflows/ci.yml
   src/
     AIGht.Web/              # Blazor WebAssembly, Bootstrap, dedicated Three.js module
     aight_api/              # FastAPI routes, schemas, processing modules, worker entry
   tests/
     api/                   # Contract, ownership, lifecycle, and processing checks
-    web/                   # Critical UI behavior and accessibility
-    fixtures/              # Synthetic or explicitly permitted documents
-  evals/                   # Grounding, extraction, abstention, and language evaluations
-  infra/                   # Local services and deployment configuration
+  scripts/                 # Local launcher, worker, synthetic PDF, OpenAPI export
+  docs/                    # Diagrams, generated contract, verification, design reference
+  infra/                   # Dockerfiles and local nginx configuration
 ```
 
-Only the documentation and issue templates are created initially. Add the other directories when they contain useful implementation files.
+Synthetic parser fixtures are generated in the tests; the browser example PDF/JSON is in `src/AIGht.Web/wwwroot/examples`. Browser checks are recorded in [docs/verification.md](docs/verification.md). A reviewed AI evaluation corpus and automated browser suite remain beta work.
 
 ## Request and processing flow
 
@@ -82,7 +89,7 @@ Only the documentation and issue templates are created initially. Add the other 
 4. Atomically admit the document, operation, idempotency response, counters, and registered RQ job using the admission protocol below. Return `202 Accepted` only after commit; queue arguments contain IDs only.
 5. Before parsing, inspect uploads for malware using the selected scan process. Parse in isolation, reject encrypted/malformed files, and inventory every PDF page.
 6. Normalize extracted text to NFC and LF line endings. Preserve page boundaries, text spans, reading order, and available bounding boxes; never overwrite the original file.
-7. Create chunks with deterministic source mappings. Start around 600 tokens with 80-token overlap, then tune on real layouts. Store every passage's page and offsets rather than trying to reconstruct them after generation.
+7. Create chunks with deterministic source mappings. The initial implementation uses 2,000 Unicode code points with 120-code-point overlap, never crossing page boundaries. Tune these bounds on reviewed layouts and tokenizer measurements. Store every passage's page and offsets rather than reconstructing them after generation.
 8. Classify each page as `readable`, `partial`, or `unreadable`. Index usable spans from readable/partial pages within that session/document. Set the document ready with coverage warnings, or fail if no usable text exists.
 
 For mixed scanned/text PDFs, usable spans may be indexed, but every downstream result must retain missing/partial-page warnings. A searchable heading above an image-only body is a partial page, not proof that its requirements were extracted. Inspect text/image placement and extraction quality with the selected parser; classify uncertain body coverage, suspicious text layers, and unreliable table/column order conservatively as partial. Small decorative images alone are not evidence of missing text. Record and evaluate the parser's actual detection rules before beta; OCR remains deferred.

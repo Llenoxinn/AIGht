@@ -1,0 +1,26 @@
+@if (Items.Count > 0)
+{
+    <section class="statement-group">
+        <h3>@Title</h3>
+        @foreach (var statement in Items)
+        {
+            <div class="statement">
+                <p>@statement.Text</p>
+                @foreach (var id in statement.CitationIds)
+                {
+                    var citation = Citations.FirstOrDefault(value => value.Id == id);
+                    @if (citation is not null)
+                    {
+                        <button class="source-link" @onclick="() => OnCite.InvokeAsync(citation)"><Icon Name="link-simple" /> Source: page @citation.PageNumber</button>
+                    }
+                }
+            </div>
+        }
+    </section>
+}
+@code {
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public List<Statement> Items { get; set; } = [];
+    [Parameter] public List<Citation> Citations { get; set; } = [];
+    [Parameter] public EventCallback<Citation> OnCite { get; set; }
+}

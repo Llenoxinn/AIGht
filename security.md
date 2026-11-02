@@ -1,6 +1,8 @@
 # AIGht Security and Privacy Plan
 
-Status: proposed requirements, 2 November 2026. This is not a security audit, a deployed privacy notice, or a claim of legal compliance. No public production release or support schedule exists yet.
+Status: v1.0.0 implementation requirements, 3 November 2026. Ownership, fixed expiry, guarded publication, bounded admission, cleanup, schema/evidence validation, and a fail-closed Linux parser sandbox are implemented. Local tests cover selected invariants; container/runtime, live-provider, adversarial, load, and deployment checks remain beta gates. This is not a security audit, a deployed privacy notice, or a claim of legal compliance. No public production release or support schedule exists yet.
+
+The parser subprocess receives a scrubbed environment, resource limits, a Landlock allowlist for one source file plus installed runtime files, and seccomp denial of network/process creation. Its stdout is a bounded file rather than an unbounded captured pipe. The local Compose stack adds an unprivileged user, dropped capabilities, read-only runtime filesystems, and private document storage. These controls require Linux runtime verification before enabling PDFs. Application cleanup scans files and Redis independently every 15 seconds, including orphaned candidates written after an earlier file sweep. The 15-minute cleanup target must still be measured with failures and restarts.
 
 ## Reporting a vulnerability
 

@@ -1,6 +1,18 @@
 # AIGht Product and Delivery Plan
 
-Status: proposed MVP baseline, revised after the pre-beta architecture audit on 2 November 2026. No application implementation exists yet. The fixes below define required implementation and checks; they do not establish beta readiness. Estimates and release dates must be set after the first technical spike.
+Status: initial v1.0.0 local implementation, 3 November 2026. The API/worker pipeline, evidence validation, temporary lifecycle, Blazor interface, and interactive Three.js workspace now exist. This version number does not establish beta readiness; the gates below still apply. See [README.md](README.md) for runnable commands and [system-flow.md](docs/diagrams/system-flow.md) for complete inputs/outputs and flow.
+
+## Implementation checkpoint
+
+| Area | Implemented | Remaining release evidence |
+| --- | --- | --- |
+| API and lifecycle | Typed OpenAPI, owned sessions, atomic Redis/RQ admission, guarded publication, cleanup reconciliation | CI/real Redis, restart and load checks |
+| Document processing | Pasted text, ClamAV-scanned PDF, Linux Landlock/seccomp subprocess, coverage and canonical spans | Linux runtime check, broad hostile/complex PDF corpus |
+| AI | OpenAI structured output and embeddings, scoped hybrid retrieval, literal evidence/fact validation, abstention | Live account/model compatibility, reviewed entailment/injection evaluations, cost measurements |
+| Workspace | Explain, checklist, Ask, exact source highlight, PDF preview, interactive 3D and flat navigation | Physical-device performance, assistive-technology and wider responsive checks |
+| Operations | Locked application dependencies, local run scripts, Compose, CI configuration | Run container/CI checks, production host/TLS/storage/network controls and actual processing notice |
+
+Local deterministic tests and builds are implementation checks; they do not prove live AI quality or production safety. Do not open beta uploads until the original acceptance/security gates below are evidenced.
 
 ## Product direction
 
@@ -174,4 +186,4 @@ The repository maintainer owns these decisions until roles are assigned. Track i
 
 ## Documentation map
 
-[AI declaration](ai-declaration.md) defines responsible AI practice. [Design](design.md) defines user journeys and interface behavior. [Architecture](architecture.md) defines system boundaries. [AGENTS.md](AGENTS.md) guides contributors and coding agents. [Security](security.md) defines protections and disclosure. [API](api.md) defines the proposed wire contract.
+[AI declaration](ai-declaration.md) defines responsible AI practice. [Design](design.md) defines user journeys and interface behavior. [Architecture](architecture.md) defines system boundaries. [AGENTS.md](AGENTS.md) guides contributors and coding agents. [Security](security.md) defines protections and disclosure. [API](api.md) and the generated OpenAPI define the wire contract.
