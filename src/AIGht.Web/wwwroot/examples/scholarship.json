@@ -1,0 +1,34 @@
+{
+  "pages": [
+    {
+      "page_number": 1,
+      "status": "readable",
+      "text": "AIGht scholarship example\nSynthetic demonstration document\nThese guidelines are fictional and do not describe an actual scholarship. Use this sample to explore explanations, source citations and a page stack.",
+      "warnings": []
+    },
+    {
+      "page_number": 2,
+      "status": "readable",
+      "text": "Academic eligibility\nApplicants must maintain a general weighted average not exceeding 2.00.\nUnder this example's grading convention, lower numeric grades are better. Meeting the GWA condition alone does not establish overall eligibility.",
+      "warnings": []
+    },
+    {
+      "page_number": 3,
+      "status": "readable",
+      "text": "Documentary requirements\nApplicants must submit a certified transcript of records, proof of enrollment, a completed application form, and a copy of their school ID.",
+      "warnings": []
+    },
+    {
+      "page_number": 4,
+      "status": "readable",
+      "text": "Submission deadline\nApplicants shall submit all documentary requirements within fifteen calendar days from receipt of notice.\nCalendar days include weekends and holidays unless another provision changes the counting rule. Confirm the date on which you received the notice.",
+      "warnings": []
+    },
+    {
+      "page_number": 5,
+      "status": "readable",
+      "text": "Details to confirm\nThese sample guidelines do not state an application fee. Missing information does not mean an application is free. If a rule is unclear, ask the issuing office for confirmation.",
+      "warnings": []
+    }
+  ]
+}

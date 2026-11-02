@@ -1,6 +1,6 @@
 # AIGht Experience and Interface Design
 
-Status: design direction updated on 2 November 2026 to require an **interactive 3D experience**. This specifies the intended interface; a working prototype and device validation are still required. The product scope remains in [plan.md](plan.md).
+Status: **interactive 3D** direction implemented in the initial v1.0.0 Blazor/Three.js workspace, 3 November 2026. The actual source pages populate an interactive, bounded page stack; Explore, Read, and flat controls share the selected page. This document remains the design acceptance target; physical-device, assistive-technology, and performance validation are still required. Run the workspace from [README.md](README.md). The product scope remains in [plan.md](plan.md).
 
 ## Creative direction: Paper to clarity
 
@@ -216,11 +216,11 @@ Use warm paper backgrounds, charcoal text, near-black primary actions, and one m
 
 Use CSS custom properties for interface tokens and map the scene's materials to the same palette. Neutral lighting gradients produced by the 3D renderer are physical shading, not decorative gradient backgrounds. Resting interface panels have no drop shadow; genuine popovers may use restrained elevation. Keep structural borders for inputs, selected states, and useful grouping. Under forced colors, preserve meaningful boundaries and focus without relying on shadows.
 
-Use one Phosphor SVG family in a consistent regular/bold treatment matched to text weight, with `currentColor`; reserve fill for an actual selected state. Pair unfamiliar actions with visible words. No emoji or repeated icons in tinted boxes. Verify font/icon licenses during asset selection.
+Use one Phosphor SVG family in a consistent regular/bold treatment matched to text weight, with `currentColor`; reserve fill for an actual selected state. Pair unfamiliar actions with visible words. No emoji or repeated icons in tinted boxes. Pinned assets and licenses are recorded in `src/AIGht.Web/wwwroot/vendor/manifest.json`.
 
 ## Typography
 
-Choose **Geist Sans** for controls, document explanations, and metadata, with **Instrument Serif** used only for the short introductory display headline. The workspace uses the sans-serif alone. Self-host licensed WOFF2 assets and load only the actual weights used; use system/Georgia fallbacks and avoid third-party font requests on private document screens. These faces are a proposed implementation choice, not assets already installed in the repository.
+Use the self-hosted **Geist Sans** assets for controls, document explanations, and metadata, with **Instrument Serif** only for the short introductory display headline. The workspace uses the sans-serif alone. Load only the actual weights used, with system/Georgia fallbacks; private document screens do not request third-party fonts. WOFF2 files and OFL licenses are committed with the frontend assets.
 
 | Role | Size | Weight | Unitless line height |
 | --- | --- | --- | --- |

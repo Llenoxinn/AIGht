@@ -1,0 +1,390 @@
+@implements IAsyncDisposable
+@inject HttpClient Http
+@inject ApiClient Api
+@inject IJSRuntime JS
+
+<a class="skip-link" href="#main-content">Skip to document workspace</a>
+<div class="app-frame">
+    <header class="app-header">
+        <a href="/" class="wordmark" aria-label="AIGht home"><span class="brand-mark"><Icon Name="file-pdf" Weight="bold" /></span>AIGht<span class="wordmark-dot">.</span></a>
+        <nav aria-label="Main navigation">
+            <button class="nav-text" @onclick='() => _info = _info == "how" ? "" : "how"' aria-expanded='@(_info == "how")'>How it works</button>
+            <button class="nav-text" @onclick='() => _info = _info == "privacy" ? "" : "privacy"' aria-expanded='@(_info == "privacy")'>Privacy</button>
+        </nav>
+        <div class="header-status">
+            @if (Api.Session is not null)
+            {
+                <span class="session-time"><span class="status-dot"></span>@Remaining</span>
+                <button class="quiet-button" @onclick="EndSession">End session</button>
+            }
+            else { <span class="version-label">v1.0.0</span> }
+        </div>
+    </header>
+
+    @if (_info.Length > 0)
+    {
+        <section class="information-panel" aria-label="@(_info == "how" ? "How AIGht works" : "Privacy information")">
+            <div>
+                @if (_info == "how")
+                {
+                    <h2>From complicated to clear.</h2>
+                    <p>Upload a text-based PDF or paste text. Read a plain-language explanation, check your next steps, and ask questions backed by source passages. Explore pages in 3D, then switch to Read for selectable text.</p>
+                    <p>The scholarship example is synthetic and uses prepared responses. Your own documents use the configured AI provider. English output is supported; OCR and comparison are planned for later.</p>
+                }
+                else
+                {
+                    <h2>Your document, temporarily.</h2>
+                    <p>Real documents are processed only after agreement to the deployment's processing notice. Sessions last 60 minutes without renewal. Refreshing loses access. Delete the document or end the session to revoke access; application-storage cleanup targets 15 minutes.</p>
+                    <p>Provider retention follows the published notice. AIGht does not use your documents for training by default. Avoid uploading sensitive material until you have reviewed the actual processor details.</p>
+                    @foreach (var processor in _capabilities.Processors) { <p><strong>@processor.Name:</strong> @processor.RetentionSummary Region: @processor.Region</p> }
+                }
+            </div>
+            <button class="icon-button" aria-label="Close information" @onclick='() => _info = ""'><Icon Name="x" /></button>
+        </section>
+    }
+
+    <main id="main-content" class="workspace-shell">
+        <div class="workspace-heading">
+            <div>
+                @if (_document is null)
+                {
+                    <h1 class="intro-title">Make documents clear.</h1>
+                    <p class="intro-description">Understand the meaning. Find your next step.<br class="desktop-break" /> Always check the source.</p>
+                }
+                else
+                {
+                    <div class="document-kind"><Icon Name="file-pdf" /> @(_demoMode ? "Synthetic scholarship example" : "Temporary document")</div>
+                    <h1 class="document-title">@_document.Title</h1>
+                    <p class="document-subtitle">@_document.PageCount pages · English explanation @(_demoMode ? "· Prepared demonstration, no AI request" : "· Check cited passages before acting")</p>
+                }
+            </div>
+            @if (_document is not null)
+            {
+                <button class="quiet-button new-document" @onclick="DeleteDocument"><Icon Name="trash" /> @(_demoMode ? "Close example" : "Delete document")</button>
+            }
+        </div>
+
+        @if (_message.Length > 0) { <div class="message-banner" role="alert"><Icon Name="warning-circle" /><p>@_message</p><button class="icon-button" aria-label="Dismiss message" @onclick='() => _message = ""'><Icon Name="x" /></button></div> }
+        @if (_busy) { <div class="processing-status" role="status"><span class="processing-dot"></span>@_stage</div> }
+        @if (_document?.Coverage?.Status == "partial")
+        {
+            <div class="coverage-banner" role="status"><Icon Name="warning-circle" /><p><strong>Some content could not be fully read.</strong> @_coverageMessage Requirements, fees, or deadlines may be missing.</p></div>
+        }
+
+        <div class="workspace-grid @(_document is null ? "workspace-empty" : "")">
+            <section class="document-pane" aria-label="Document source and 3D overview">
+                <div class="pane-toolbar">
+                    <div class="view-tabs" role="group" aria-label="Document view">
+                        <button type="button" aria-pressed="@(!_readView)" class="@(!_readView ? "active" : "")" @onclick="ShowExplore"><Icon Name="cube" />Explore</button>
+                        <button type="button" aria-pressed="@_readView" class="@(_readView ? "active" : "")" @onclick="ShowRead"><Icon Name="book-open" />Read</button>
+                    </div>
+                    <span class="source-label">@(_document is null ? "A look inside your document space" : _demoMode ? "Example source" : "Original source")</span>
+                </div>
+
+                <div class="scene-wrap @(_readView ? "scene-hidden" : "")">
+                    <div id="aight-scene" @ref="_sceneElement" class="scene-host" aria-hidden="true"></div>
+                    @if (!_sceneAvailable || _flatView)
+                    {
+                        <div class="flat-pages" aria-label="Page navigator">
+                            @foreach (var page in VisiblePages)
+                            {
+                                <button class="flat-page @(page.PageNumber == _selectedPage ? "selected" : "")" @onclick="() => SelectPage(page.PageNumber, false)">
+                                    <span>Page @(page.PageNumber)</span><strong>@FirstLine(page.Text)</strong><p>@PreviewText(page.Text)</p>
+                                    @if (page.Status != "readable") { <span class="page-warning">@(page.Status == "partial" ? "Partially readable" : "Unreadable")</span> }
+                                </button>
+                            }
+                        </div>
+                    }
+                    <div class="scene-caption"><span class="caption-rule"></span><p>@(_document is null ? "The source stays connected to its meaning." : "Select a page. Follow the evidence.")</p></div>
+                    @if (_sceneAvailable && !_flatView) { <p class="gesture-hint">Drag gently to turn · Select a page to focus</p> }
+                </div>
+
+                @if (_readView)
+                {
+                    <div class="source-reader">
+                        <div class="reader-heading"><h2>Page @_selectedPage</h2><button class="source-link" @onclick="ShowExplore"><Icon Name="arrow-left" />Back to overview</button></div>
+                        @if (_selectedCitation is not null) { <p class="selection-note"><Icon Name="link-simple" /> Cited passage highlighted below.</p> }
+                        @if (CurrentPage?.Status != "readable") { <div class="reader-warning">This page is @(CurrentPage?.Status == "partial" ? "partially readable" : "unreadable"). The original may contain information that could not be extracted.</div> }
+                        <div class="source-text" tabindex="0" aria-label="Extracted source text">
+                            @if (_selectedCitation is not null && CurrentPage is not null && _selectedCitation.PageNumber == _selectedPage)
+                            {
+                                var start = Wire.Utf16Index(CurrentPage.Text, _selectedCitation.Start);
+                                var end = Wire.Utf16Index(CurrentPage.Text, _selectedCitation.End);
+                                @CurrentPage.Text[..start]<mark>@CurrentPage.Text[start..end]</mark>@CurrentPage.Text[end..]
+                            }
+                            else { @CurrentPage?.Text }
+                        </div>
+                        @if (_demoMode || _document is null || _document.InputType == "pdf") { <details class="pdf-disclosure" @ontoggle="PdfToggled"><summary>Original PDF page</summary><div id="pdf-source" class="pdf-source" aria-hidden="true"></div></details> }
+                        <p class="reader-footnote">Source text is normalized for navigation. Check the original PDF when layout matters.</p>
+                    </div>
+                }
+
+                <div class="scene-controls">
+                    <div class="page-stepper">
+                        <button class="icon-button" aria-label="Previous page" disabled="@(_selectedPage <= 1)" @onclick="() => SelectPage(_selectedPage - 1, false)"><Icon Name="arrow-left" /></button>
+                        <label class="page-input-label">Page <input type="number" min="1" max="@AllPages.Count" value="@_selectedPage" @onchange="PageInput" aria-label="Source page number" /> <span>of @AllPages.Count</span></label>
+                        <button class="icon-button" aria-label="Next page" disabled="@(_selectedPage >= AllPages.Count)" @onclick="() => SelectPage(_selectedPage + 1, false)"><Icon Name="arrow-right" /></button>
+                    </div>
+                    @if (!_readView && _sceneAvailable && !_flatView)
+                    {
+                        <div class="spatial-controls">
+                            <button class="icon-button turn-control" aria-label="Turn left" @onclick='() => SceneCommand("turn", -1)'><Icon Name="arrow-left" /></button>
+                            <button class="icon-button turn-control" aria-label="Turn right" @onclick='() => SceneCommand("turn", 1)'><Icon Name="arrow-right" /></button>
+                            <button class="quiet-button" @onclick="ToggleSpread"><Icon Name="arrows-out-simple" />@(_spread ? "Stack pages" : "Spread pages")</button>
+                            <button class="icon-button" aria-label="Reset 3D view" @onclick='() => SceneCommand("reset", 0)'><Icon Name="arrow-counter-clockwise" /></button>
+                        </div>
+                    }
+                </div>
+                <div class="source-footer"><span><span class="status-dot"></span>@(_demoMode || _document is null ? "Synthetic example · no private data" : "Visible only in this temporary session")</span>@if (_sceneAvailable) { <button class="source-link" @onclick="ToggleFlat">@(_flatView ? "Use 3D view" : "Use flat view")</button> } else { <span>Flat view · 3D unavailable</span> }</div>
+            </section>
+
+            <aside class="insights-pane" aria-label="Explanation, actions, and document questions">
+                @if (_document is null)
+                {
+                    <div class="start-panel">
+                        <h2>A little clarity. <br />A clear next step.</h2>
+                        <p>Scholarship rules, school memos, application requirements. Bring the document that has you asking, “What does this mean?”</p>
+                        <div class="start-actions">
+                            <label class="button button-primary upload-button @(!CanProcessPdf ? "disabled" : "")"><Icon Name="upload-simple" />Upload a PDF<InputFile OnChange="Upload" accept="application/pdf,.pdf" disabled="@(!CanProcessPdf)" aria-label="Upload a PDF" /></label>
+                            <button class="button button-secondary" @onclick="() => _pasteOpen = !_pasteOpen"><Icon Name="text-t" />Paste text</button>
+                        </div>
+                        <p class="input-limits">Text-based PDFs · Up to 10 MiB / 50 pages<br />Pasted text · Up to 100,000 characters</p>
+                        @if (_capabilities.ProcessingAvailable)
+                        {
+                            <label class="processing-agreement"><input type="checkbox" @bind="_noticeAccepted" /><span>I have read the <a href="@_capabilities.ProcessingNotice?.Url" target="_blank" rel="noopener noreferrer">processing notice</a> and agree to temporary AI processing.</span></label>
+                        }
+                        else { <p class="configuration-note"><Icon Name="warning-circle" />@(_apiReachable ? "AI processing needs provider and privacy configuration. You can explore the example now." : "The processing service is offline. You can still explore the example.")</p> }
+                        @if (_pasteOpen)
+                        {
+                            <div class="paste-panel"><label for="paste-title">Document title</label><input id="paste-title" class="text-input" @bind="_pasteTitle" maxlength="200" /><label for="paste-text">Document text</label><textarea id="paste-text" @bind="_pasteText" maxlength="100000" rows="7" placeholder="Paste the document you want to understand."></textarea><button class="button button-primary" disabled="@(!CanProcess || _busy || string.IsNullOrWhiteSpace(_pasteText))" @onclick="Paste">Explain this text<Icon Name="arrow-right" /></button></div>
+                        }
+                        <div class="example-invitation"><span class="example-rule"></span><p>Start with something familiar.</p><button class="example-button" disabled="@(_demo is null || _busy)" @onclick="OpenDemo"><span class="example-icon"><Icon Name="file-pdf" /></span><span><strong>Scholarship guidelines</strong><small>Try a synthetic example</small></span><Icon Name="arrow-right" /></button></div>
+                        <div class="trust-note"><Icon Name="link-simple" /><span>Explanations point back to the original source.</span></div>
+                    </div>
+                }
+                else
+                {
+                    <div class="insight-tabs" role="group" aria-label="Document tools">
+                        <button aria-pressed='@(_tab == "explain")' class='@(_tab == "explain" ? "active" : "")' @onclick='() => _tab = "explain"'>Explain</button>
+                        <button aria-pressed='@(_tab == "actions")' class='@(_tab == "actions" ? "active" : "")' @onclick='() => _tab = "actions"'>What now?</button>
+                        <button aria-pressed='@(_tab == "ask")' class='@(_tab == "ask" ? "active" : "")' @onclick='() => _tab = "ask"'>Ask</button>
+                    </div>
+                    <div class="insight-content">
+                        @if (_tab == "explain")
+                        {
+                            <h2>AIght, explain!</h2><p class="pane-description">The meaning, with the source in reach.</p>
+                            @if (_analysis is not null)
+                            {
+                                <StatementList Title="What it means" Items="_analysis.Meaning" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="How it may affect you" Items="_analysis.PossibleEffects" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="Eligibility conditions" Items="_analysis.Eligibility" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="Requirements" Items="_analysis.Requirements" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="Deadlines" Items="_analysis.Deadlines" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="Fees" Items="_analysis.Fees" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                <StatementList Title="Details to check" Items="_analysis.DetailsToCheck" Citations="_analysis.Citations" OnCite="OpenCitation" />
+                                @if (_analysis.NotStated.Count > 0) { <p class="absence-note">Not stated in the analyzed document: @string.Join(", ", _analysis.NotStated). Missing information does not mean an application is free or has no other requirements.</p> }
+                                <button class="button button-secondary full-width" @onclick='() => _tab = "actions"'>See what to do next<Icon Name="arrow-right" /></button>
+                            }
+                            else if (!_busy) { <p>Your source is ready. Generate a source-backed explanation when you are ready.</p><button class="button button-primary" @onclick="Analyze">Explain this document</button> }
+                        }
+                        else if (_tab == "actions")
+                        {
+                            <h2>AIght, what now?</h2><p class="pane-description">Your next steps, one at a time.</p>
+                            @if (_analysis is not null)
+                            {
+                                <div class="checklist-summary">@_completed.Count of @_analysis.Actions.Count marked done<span>Personal progress · resets on refresh</span></div>
+                                @foreach (var action in _analysis.Actions)
+                                {
+                                    <div class="checklist-item"><label><input type="checkbox" checked="@_completed.Contains(action.Id)" @onchange="() => ToggleAction(action.Id)" /><span><small>@(action.Kind == "document_requirement" ? "Required by the document" : "Suggested next step")</small>@action.Text</span></label>
+                                        @foreach (var id in action.CitationIds) { var citation = _analysis.Citations.FirstOrDefault(value => value.Id == id); @if (citation is not null) { <button class="source-link" @onclick="() => OpenCitation(citation)">Source: page @citation.PageNumber<Icon Name="link-simple" /></button> } }
+                                    </div>
+                                }
+                                <p class="reader-footnote">Checking an item does not verify a submission or determine eligibility.</p>
+                            }
+                            else { <p>Generate an explanation to see the requirements and suggested next steps.</p> }
+                        }
+                        else
+                        {
+                            <h2>AIght, ask!</h2><p class="pane-description">A question about this document.<br />An answer you can check.</p>
+                            <label class="question-label" for="question">Ask about this document</label>
+                            <textarea id="question" @bind="_question" @bind:event="oninput" maxlength="2000" rows="3" placeholder="Which documents do I need to submit?"></textarea>
+                            <button class="button button-primary full-width" disabled="@(_busy || string.IsNullOrWhiteSpace(_question))" @onclick="Ask">Ask AIGht<Icon Name="arrow-right" /></button>
+                            <p class="question-helper">Name the rule in each question. Previous answers are not used as evidence.</p>
+                            @if (_demoMode) { <div class="suggested-questions"><p>Try a prepared example:</p>@foreach (var suggestion in Suggestions) { <button @onclick="() => AskSuggestion(suggestion)">@suggestion<Icon Name="arrow-right" /></button> }</div> }
+                            @foreach (var exchange in _answers.AsEnumerable().Reverse())
+                            {
+                                <article class="answer-block"><h3>@exchange.Question</h3><p class="answer-status">@(_demoMode ? "Prepared example answer" : exchange.Answer.Status.Replace('_', ' '))</p>
+                                    @foreach (var statement in exchange.Answer.Statements) { <p>@statement.Text</p>@foreach (var id in statement.CitationIds) { var citation = exchange.Answer.Citations.FirstOrDefault(value => value.Id == id); @if (citation is not null) { <button class="source-link" @onclick="() => OpenCitation(citation)"><Icon Name="link-simple" />Source: page @citation.PageNumber</button> } } }
+                                    @if (exchange.Answer.Coverage.Status == "partial") { <p class="reader-warning">Some document content was unreadable or unprocessed.</p> }
+                                </article>
+                            }
+                        }
+                    </div>
+                    <div class="result-disclosure"><Icon Name="warning-circle" /><p>@(_demoMode ? "Synthetic example with prepared explanations. This is not an actual scholarship." : "AI-generated explanation. Check the cited passages before acting; AIGht can miss details.")</p></div>
+                }
+            </aside>
+        </div>
+    </main>
+    <footer class="app-footer"><span>AIGht — AIght, alright.</span><span>From source to understanding.</span><button class="nav-text" @onclick='() => _info = "privacy"'>Privacy &amp; data</button></footer>
+</div>
+
+@code {
+    private ElementReference _sceneElement;
+    private IJSObjectReference? _sceneModule;
+    private DotNetObjectReference<Home>? _self;
+    private readonly CancellationTokenSource _lifetime = new();
+    private CancellationTokenSource _work = new();
+    private Capabilities _capabilities = new();
+    private DemoData? _demo;
+    private Document? _document;
+    private Analysis? _analysis;
+    private List<SourcePage> _pages = [];
+    private byte[]? _sourceBytes;
+    private Citation? _selectedCitation;
+    private readonly HashSet<string> _completed = [];
+    private readonly List<(string Question, Answer Answer)> _answers = [];
+    private bool _demoMode, _readView, _flatView, _sceneAvailable = true, _spread, _busy, _noticeAccepted, _pasteOpen, _apiReachable, _needsScene = true, _needsPdf, _disposed;
+    private int _selectedPage = 1, _generation;
+    private string _tab = "explain", _message = "", _stage = "", _info = "", _question = "", _pasteTitle = "My document", _pasteText = "";
+    private DateTimeOffset _clock = DateTimeOffset.UtcNow;
+    private static readonly string[] Suggestions = ["Does a GWA of 1.75 meet this condition?", "Which documents must I submit?", "How is the deadline counted?"];
+    private bool CanProcess => _capabilities.ProcessingAvailable && _noticeAccepted;
+    private bool CanProcessPdf => CanProcess && _capabilities.Features.GetValueOrDefault("pdf") && !_busy;
+    private List<SourcePage> AllPages => _pages.Count > 0 ? _pages : _demo?.Pages ?? [];
+    private IEnumerable<SourcePage> VisiblePages => AllPages.Skip(Math.Clamp(_selectedPage - 3, 0, Math.Max(0, AllPages.Count - 5))).Take(5);
+    private SourcePage? CurrentPage => AllPages.FirstOrDefault(value => value.PageNumber == _selectedPage);
+    private string Remaining => Api.Session is null ? "" : $"{Math.Max(0, (int)(Api.Session.ExpiresAt - _clock).TotalMinutes):00}:{Math.Max(0, (Api.Session.ExpiresAt - _clock).Seconds):00} remaining";
+    private string _coverageMessage => _document?.Coverage is not { } coverage ? "" : $"Partial pages: {string.Join(", ", coverage.PartialPages)}. Unreadable pages: {string.Join(", ", coverage.UnreadablePages)}.";
+    private static string FirstLine(string text) => text.Split('\n').FirstOrDefault() ?? "Source page";
+    private static string PreviewText(string text) => text.Length > 260 ? text[..260] + "…" : text;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { var fixture = await Http.GetFromJsonAsync<DemoFixture>("examples/scholarship.json", Wire.Json, _lifetime.Token); _demo = new(fixture?.Pages ?? []); }
+        catch (Exception) { _message = "The example could not be loaded. Please reload the workspace."; }
+        try { _capabilities = await Api.Capabilities(_lifetime.Token); _apiReachable = true; } catch (Exception) { _apiReachable = false; }
+        _ = Tick();
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_disposed) return;
+        if (firstRender)
+        {
+            try { _sceneModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/document-space.js"); _flatView = await _sceneModule.InvokeAsync<bool>("preferFlat"); _self = DotNetObjectReference.Create(this); _sceneAvailable = await _sceneModule.InvokeAsync<bool>("initialize", _sceneElement, _self); await _sceneModule.InvokeVoidAsync("setVisible", !_flatView); }
+            catch (JSException) { _sceneAvailable = false; _flatView = true; }
+            StateHasChanged();
+        }
+        if (_needsScene && _sceneModule is not null && AllPages.Count > 0)
+        {
+            _needsScene = false;
+            try { await _sceneModule.InvokeVoidAsync("setPages", AllPages, _selectedPage, _demoMode || _document is null, _sourceBytes); }
+            catch (JSException) { _sceneAvailable = false; _flatView = true; }
+        }
+        if (_needsPdf && _readView) { _needsPdf = false; await RenderPdf(); }
+    }
+    private async Task Tick()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+        try { while (await timer.WaitForNextTickAsync(_lifetime.Token)) { _clock = DateTimeOffset.UtcNow; if (Api.Session is not null && Api.Session.ExpiresAt <= _clock) { await ClearDocument(); Api.Clear(); _message = "Your temporary session expired. Import the document again to continue."; } await InvokeAsync(StateHasChanged); } }
+        catch (OperationCanceledException) { }
+    }
+    private async Task ClearDocument()
+    {
+        _generation++; _work.Cancel(); _work.Dispose(); _work = new(); _busy = false;
+        _document = null; _analysis = null; _pages = []; _sourceBytes = null; _selectedCitation = null; _answers.Clear(); _completed.Clear();
+        _demoMode = false; _readView = false; _selectedPage = 1; _tab = "explain"; _question = ""; _needsScene = true;
+        if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("clearPrivateContent");
+    }
+    private async Task OpenDemo()
+    {
+        if (_demo is null) return;
+        await ClearDocument(); _demoMode = true; _document = _demo.Document; _analysis = _demo.Explanation(); _pages = _demo.Pages; _selectedPage = 2; _message = ""; _needsScene = true;
+    }
+    private async Task Process(Func<CancellationToken, Task> work)
+    {
+        if (_busy) return;
+        _busy = true; _message = ""; _stage = "Preparing your document…";
+        try { await work(_work.Token); }
+        catch (OperationCanceledException) { }
+        catch (Exception error) { _message = error is InvalidOperationException ? error.Message : "The processing service could not be reached. Please try again."; }
+        finally { _busy = false; _stage = ""; }
+    }
+    private void Progress(string stage) { _stage = stage.Replace('_', ' ') + "…"; _ = InvokeAsync(StateHasChanged); }
+    private async Task PrepareSession(CancellationToken ct)
+    {
+        if (!CanProcess || _capabilities.ProcessingNotice is null) throw new InvalidOperationException("Read and agree to the current processing notice before importing a document.");
+        await Api.StartSession(_capabilities.ProcessingNotice.Version, ct);
+    }
+    private async Task LoadAccepted(Acknowledgment accepted, CancellationToken ct)
+    {
+        await Api.Poll(accepted, Progress, ct);
+        var doc = await Api.Get<Document>($"api/v1/documents/{accepted.DocumentId}", ct);
+        var pages = await Api.Get<List<SourcePage>>($"api/v1/documents/{doc.Id}/pages", ct);
+        var source = doc.InputType == "pdf" ? await Api.Source(doc.Id, ct) : null;
+        ct.ThrowIfCancellationRequested();
+        _document = doc; _pages = pages; _sourceBytes = source; _selectedPage = 1; _needsScene = true;
+        var analysis = await Api.Poll(await Api.Analyze(doc.Id, ct), Progress, ct);
+        ct.ThrowIfCancellationRequested();
+        _analysis = analysis.Result?.Deserialize<Analysis>(Wire.Json);
+        if (_analysis is not null) _document.Coverage = _analysis.Coverage;
+    }
+    private async Task Upload(InputFileChangeEventArgs args) => await Process(async ct =>
+    {
+        await PrepareSession(ct);
+        if (args.File.Size > 10_485_760) throw new InvalidOperationException("Choose a PDF that is 10 MiB or smaller.");
+        using var memory = new MemoryStream(); await args.File.OpenReadStream(10_485_760, ct).CopyToAsync(memory, ct);
+        await LoadAccepted(await Api.Upload(args.File.Name, memory.ToArray(), ct), ct);
+    });
+    private async Task Paste() => await Process(async ct => { await PrepareSession(ct); await LoadAccepted(await Api.Paste(_pasteTitle, _pasteText, ct), ct); _pasteText = ""; _pasteOpen = false; });
+    private async Task Analyze() => await Process(async ct => { if (_document is null) return; var result = await Api.Poll(await Api.Analyze(_document.Id, ct), Progress, ct); ct.ThrowIfCancellationRequested(); _analysis = result.Result?.Deserialize<Analysis>(Wire.Json); if (_analysis is not null) _document.Coverage = _analysis.Coverage; });
+    private async Task Ask()
+    {
+        if (_document is null || string.IsNullOrWhiteSpace(_question)) return;
+        var question = _question.Trim();
+        if (_demoMode && _demo is not null) { _answers.Add((question, _demo.Ask(question))); _question = ""; return; }
+        await Process(async ct => { var operation = await Api.Poll(await Api.Ask(_document.Id, question, ct), Progress, ct); ct.ThrowIfCancellationRequested(); var answer = operation.Result?.Deserialize<Answer>(Wire.Json); if (answer is not null) { _answers.Add((question, answer)); _question = ""; } });
+    }
+    private async Task AskSuggestion(string value) { _question = value; await Ask(); }
+    private void ToggleAction(string id) { if (!_completed.Add(id)) _completed.Remove(id); }
+    private async Task DeleteDocument()
+    {
+        var doc = _document; var demo = _demoMode;
+        _work.Cancel();
+        try { if (!demo && doc is not null) await Api.Delete(doc.Id, _lifetime.Token); await ClearDocument(); }
+        catch (Exception) { _message = "Deletion could not be confirmed. End the session or retry; the fixed expiry still applies."; }
+    }
+    private async Task EndSession()
+    {
+        try { if (Api.Session is not null) await Api.EndSession(_lifetime.Token); await ClearDocument(); }
+        catch (Exception) { _message = "Ending the session could not be confirmed. Please retry."; }
+    }
+    [JSInvokable] public async Task SelectPageFromScene(int page) { await SelectPage(page, true); await InvokeAsync(StateHasChanged); }
+    [JSInvokable] public async Task SceneUnavailable() { _sceneAvailable = false; _flatView = true; await InvokeAsync(StateHasChanged); }
+    private async Task SelectPage(int page, bool animate)
+    {
+        _selectedPage = Math.Clamp(page, 1, Math.Max(1, AllPages.Count)); _selectedCitation = null;
+        if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("selectPage", _selectedPage, animate);
+        _needsPdf = true;
+    }
+    private async Task PageInput(ChangeEventArgs args) { if (int.TryParse(args.Value?.ToString(), out var page)) await SelectPage(page, false); }
+    private async Task OpenCitation(Citation citation)
+    {
+        await SelectPage(citation.PageNumber, false); _selectedCitation = citation; _readView = true;
+        _needsPdf = true;
+        if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("setVisible", false);
+        await InvokeAsync(StateHasChanged);
+    }
+    private async Task ShowRead() { _readView = true; _needsPdf = true; if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("setVisible", false); }
+    private async Task ShowExplore() { _readView = false; if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("setVisible", !_flatView); }
+    private async Task SceneCommand(string command, int direction) { if (command == "reset") _spread = false; if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("command", command, direction); }
+    private async Task ToggleSpread() { _spread = !_spread; await SceneCommand(_spread ? "spread" : "stack", 0); }
+    private async Task ToggleFlat() { _flatView = !_flatView; if (_sceneModule is not null) await _sceneModule.InvokeVoidAsync("setVisible", !_flatView && !_readView); }
+    private async Task PdfToggled(EventArgs args) => await RenderPdf();
+    private async Task RenderPdf() { if (_sceneModule is not null && (_demoMode || _sourceBytes is not null || _document is null)) { try { await _sceneModule.InvokeVoidAsync("renderPdf", "pdf-source", _selectedPage, _selectedCitation?.Boxes ?? []); } catch (JSException) { } } }
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true; _lifetime.Cancel(); _work.Cancel();
+        if (_sceneModule is not null) { try { await _sceneModule.InvokeVoidAsync("dispose"); await _sceneModule.DisposeAsync(); } catch (JSDisconnectedException) { } }
+        _self?.Dispose(); _work.Dispose(); _lifetime.Dispose(); Api.Clear();
+    }
+}

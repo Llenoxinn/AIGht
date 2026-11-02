@@ -1,0 +1,6 @@
+<svg class="icon @Class" width="20" height="20" aria-hidden="true" focusable="false"><use href="@($"/vendor/icons/phosphor.svg#{Name}-{Weight}")" /></svg>
+@code {
+    [Parameter] public string Name { get; set; } = "file-pdf";
+    [Parameter] public string Weight { get; set; } = "regular";
+    [Parameter] public string Class { get; set; } = "";
+}

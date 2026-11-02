@@ -1,6 +1,6 @@
 # AIGht API Contract
 
-Status: proposed REST contract v0.2, revised after the pre-beta audit on 2 November 2026. These endpoints are not implemented. This draft adds explicit admission guarantees and partial-page coverage; there are no deployed clients to migrate. Examples use synthetic IDs and data, not live credentials or documents.
+Status: `/api/v1` initial implementation for application 1.0.0, 3 November 2026. [Generated OpenAPI](docs/openapi.json) comes from the actual FastAPI/Pydantic models; regenerate with `uv run python scripts/export_openapi.py`. This narrative also defines release guarantees that require runtime verification. No public deployment is configured. Examples use synthetic IDs and data, not live credentials or documents.
 
 ## Conventions
 
@@ -40,6 +40,7 @@ Missing, invalid, revoked, and expired tokens return `401 invalid_session`. With
 | GET | `/documents/{document_id}` | 200 | Read owned document metadata and coverage |
 | GET | `/documents/{document_id}/source` | 200 | Read the original PDF or pasted source |
 | GET | `/documents/{document_id}/pages/{page_number}` | 200 | Read canonical extracted text and layout metadata |
+| GET | `/documents/{document_id}/pages` | 200 | Read all bounded canonical pages in one request for the workspace |
 | DELETE | `/documents/{document_id}` | 202 | Revoke document and cancel its work |
 | POST | `/documents/{document_id}/analyses` | 202 | Queue explanation and action extraction |
 | POST | `/documents/{document_id}/questions` | 202 | Queue an independent grounded question |
@@ -333,9 +334,9 @@ Operation state is `queued | running | succeeded | failed | cancelled`. Return `
     "generation": {
       "model_id": "configured-model-version",
       "prompt_version": "ask_v1",
-      "retrieval_version": "retrieval_v1",
-      "extraction_version": "extract_v1",
-      "schema_version": "1"
+      "retrieval_version": "hybrid_v1",
+      "extraction_version": "pdfplumber_v1",
+      "schema_version": "2"
     }
   },
   "error": null
@@ -344,7 +345,7 @@ Operation state is `queued | running | succeeded | failed | cancelled`. Return `
 
 `kind` is `ingestion | analysis | question`. `stage` is `queued | scanning | extracting | indexing | analyzing | retrieving | answering | complete | failed | cancelled`; text imports skip scanning. Stages are descriptive, not percentages. Pending/running records have null `result` and `error`. Failed records have null `result` and a safe error. Succeeded records have a typed result and null error. Cancelled records have both null.
 
-Poll after two seconds initially and back off up to ten seconds with jitter, respecting `Retry-After` where present. Stop on terminal state, session expiry, or view teardown. The MVP has no SSE/WebSocket stream and no separate operation-cancellation endpoint; deleting its document or ending the session cancels work and makes the record unavailable.
+The current browser polls after one second initially and backs off up to ten seconds. It stops on terminal state, request failure, session expiry, or view teardown. Add jitter and measured retry scheduling before a multi-instance beta; retryable HTTP errors include `Retry-After` when applicable. The MVP has no SSE/WebSocket stream and no separate operation-cancellation endpoint; deleting its document or ending the session cancels work and makes the record unavailable.
 
 ### Common evidence types
 

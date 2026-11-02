@@ -6,7 +6,7 @@ These instructions apply to this repository and its descendants unless a more sp
 
 AIGht is a document understanding assistant: explain important information, identify actions, and answer questions from cited document evidence. It must help users understand source material without pretending to be the issuing organization or an eligibility decision-maker.
 
-The repository currently contains planning documents and Markdown issue templates. Do not claim that services, build scripts, dependencies, tests, or deployments exist until you inspect them.
+The repository contains the initial v1.0.0 implementation, project documents, and Markdown issue templates. Read [README.md](README.md) for actual run/check commands and current limits. Implementation, successful local checks, CI configuration, and a deployed/beta-approved release are distinct states; never claim verification that has not run.
 
 Read the documents relevant to your change:
 
@@ -66,7 +66,7 @@ The initial stack is standalone Blazor WebAssembly, Bootstrap, a self-hosted Thr
 
 ## Verification and handoff
 
-Discover actual build/test commands from checked-in project files when implementation exists. No runnable application commands are established yet; do not invent successful checks.
+Discover actual build/test commands from [README.md](README.md), `scripts/dev.ps1`, `pyproject.toml`, and the frontend project. Report platform-dependent skipped checks and live-provider/production verification separately.
 
 Choose checks that match the change:
 

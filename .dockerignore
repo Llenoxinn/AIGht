@@ -1,0 +1,13 @@
+.git
+.tools
+.venv
+.local
+.env
+.env.*
+**/node_modules
+**/bin
+**/obj
+**/__pycache__
+.pytest_cache
+artifacts
+output

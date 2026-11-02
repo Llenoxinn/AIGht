@@ -1,0 +1,26 @@
+[project]
+name = "aight"
+version = "1.0.0"
+description = "A temporary, citation-grounded document understanding assistant"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "fastapi==0.162.0",
+  "uvicorn==0.54.0",
+  "redis==8.1.0",
+  "rq==3.0.0",
+  "pdfplumber==0.11.10",
+  "httpx==0.28.1",
+  "pydantic-settings==2.16.2",
+  "python-multipart==0.0.33",
+]
+
+[dependency-groups]
+dev = ["pytest==9.2.0", "fakeredis[lua]==2.40.0", "lupa==2.8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests/api"]
+addopts = "-q"

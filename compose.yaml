@@ -1,0 +1,80 @@
+name: aight
+services:
+  web:
+    build:
+      context: .
+      dockerfile: infra/web.Dockerfile
+    ports: ["127.0.0.1:5080:80"]
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "512mb", "--maxmemory-policy", "noeviction"]
+    tmpfs: ["/data"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  clamav:
+    image: clamav/clamav:stable
+    volumes: ["clamav-signatures:/var/lib/clamav"]
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      start_period: 180s
+      retries: 10
+  api:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    env_file: &env_file
+      - path: .env
+        required: false
+    environment: &environment
+      AIGHT_REDIS_URL: redis://redis:6379/0
+      AIGHT_DATA_DIR: /data
+      AIGHT_CLAMAV_HOST: clamav
+      AIGHT_PDF_PROCESSING_ENABLED: "true"
+    volumes: ["private-documents:/data"]
+    ports: ["127.0.0.1:8000:8000"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      redis: {condition: service_healthy}
+  worker:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    command: ["python", "scripts/run_worker.py"]
+    env_file: *env_file
+    environment: *environment
+    volumes: ["private-documents:/data"]
+    read_only: true
+    tmpfs: ["/tmp:size=64m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 2
+    pids_limit: 64
+    depends_on:
+      redis: {condition: service_healthy}
+      clamav: {condition: service_healthy}
+  maintenance:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    command: ["python", "-m", "aight_api.maintenance"]
+    env_file: *env_file
+    environment: *environment
+    volumes: ["private-documents:/data"]
+    read_only: true
+    tmpfs: ["/tmp:size=16m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    depends_on:
+      redis: {condition: service_healthy}
+volumes:
+  private-documents:
+  clamav-signatures:

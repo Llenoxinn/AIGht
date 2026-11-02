@@ -1,0 +1,65 @@
+{
+  "generated_by": "npm run assets",
+  "packages": {
+    "three": {
+      "version": "0.187.0",
+      "license": "MIT"
+    },
+    "pdfjs-dist": {
+      "version": "6.5.438",
+      "license": "Apache-2.0"
+    },
+    "bootstrap": {
+      "version": "5.3.8",
+      "license": "MIT"
+    },
+    "@fontsource/geist-sans": {
+      "version": "5.3.0",
+      "license": "OFL-1.1"
+    },
+    "@fontsource/instrument-serif": {
+      "version": "5.3.0",
+      "license": "OFL-1.1"
+    },
+    "@phosphor-icons/core": {
+      "version": "2.1.1",
+      "license": "MIT"
+    }
+  },
+  "imports": {
+    "three": "vendor/three/three.module.js",
+    "pdfjs": "vendor/pdfjs/pdf.mjs",
+    "pdfjs_worker": "vendor/pdfjs/pdf.worker.mjs",
+    "bootstrap_css": "vendor/bootstrap/bootstrap.min.css",
+    "fonts_css": "fonts/fonts.css",
+    "icons": "vendor/icons/phosphor.svg"
+  },
+  "icons": [
+    "arrow-left",
+    "arrow-right",
+    "arrow-counter-clockwise",
+    "arrows-out-simple",
+    "arrows-in-simple",
+    "book-open",
+    "caret-down",
+    "chat-circle-text",
+    "check",
+    "check-circle",
+    "cube",
+    "file-pdf",
+    "link-simple",
+    "magnifying-glass-plus",
+    "magnifying-glass-minus",
+    "spinner-gap",
+    "text-t",
+    "trash",
+    "upload-simple",
+    "warning-circle",
+    "x"
+  ],
+  "icon_weights": [
+    "regular",
+    "bold",
+    "fill"
+  ]
+}

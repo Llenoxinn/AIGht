@@ -1,6 +1,6 @@
 # AIGht AI Declaration
 
-Status: initial project declaration, 2 November 2026. This describes intended practice; it is not evidence of an implemented or audited system.
+Status: v1.0.0 development declaration, 3 November 2026. The initial application and provider integration are implemented locally. This declaration is not evidence of audited model quality, completed beta gates, or a public release.
 
 ## Purpose
 
@@ -15,7 +15,7 @@ The product should answer four questions:
 
 ## AI use in development
 
-This initial documentation set was drafted with OpenAI Codex from the project owner's brief. It contains proposed product, design, architecture, security, and API decisions. Application code, model integrations, deployment, and production verification are not part of this documentation delivery.
+The documentation and initial application were created with OpenAI Codex from the project owner's brief. AI assistance covered product/design documents, Blazor/Three.js UI, Python API/worker, tests, assets/build configuration, and diagrams. Deterministic local checks use synthetic data and a provider double; they do not establish live model quality. Deployment and production verification are separate work.
 
 Maintainers remain responsible for reviewing AI-assisted work before merging or releasing it. Contributions should disclose material AI assistance in their pull request, including affected areas, verification performed, and unresolved limitations. Never claim a human review, test result, security assessment, or model capability that did not occur.
 
